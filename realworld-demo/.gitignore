@@ -11,6 +11,11 @@ build/
 .vite/
 *.local
 
+# Environment — keep .env.local secret (has personal overrides)
+# .env.example and .env.production ARE committed (no secrets)
+.env.local
+.env.*.local
+
 # Cypress
 cypress/videos/
 cypress/screenshots/

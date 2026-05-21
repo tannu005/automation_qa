@@ -6,8 +6,9 @@ import axios from 'axios'
 import App from './App'
 import makeServer from './server'
 
-if (process.env.NODE_ENV === 'production') {
-  axios.defaults.baseURL = 'https://api.realworld.show/api'
+// In production, use VITE_API_URL env var (or fall back to the active RealWorld mirror)
+if (!import.meta.env.DEV) {
+  axios.defaults.baseURL = import.meta.env.VITE_API_URL || 'https://api.realworld.show/api'
 }
 
 const defaultQueryFn = async ({ queryKey }) => {
