@@ -7,6 +7,15 @@
 
 ---
 
+## 🎥 Loom Demonstration Video
+
+> [!IMPORTANT]
+> **Walkthrough Video Link:** **[PASTE YOUR LOOM VIDEO LINK HERE]**
+>
+> *(To complete your submission, record a quick 60-90 second walkthrough of this repo and the running local app using the provided script, and paste your Loom URL right here!)*
+
+---
+
 ## 📁 Repository Structure
 
 ```
