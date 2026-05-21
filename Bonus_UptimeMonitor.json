@@ -1,0 +1,282 @@
+{
+  "name": "Web App Uptime Monitor",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 5
+            }
+          ]
+        }
+      },
+      "id": "47993f16-53bb-4f5b-93b1-fd70c9aba24c",
+      "name": "Schedule - Every 5 Minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    startTime: Date.now()\n  }\n}];"
+      },
+      "id": "3b18e584-f462-4c2b-aae4-fb5165a1d589",
+      "name": "Set Start Time",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        180,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.APP_URL || 'https://demo.realworld.show' }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "2b2f0771-9a63-4fc7-af36-931a91d81512",
+      "name": "Ping Web App",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        360,
+        200
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const pingResult = $input.all()[0]?.json;\nconst startTime = $node[\"Set Start Time\"].json.startTime;\nconst responseTime = Date.now() - startTime;\n\n// Handle errors (like connection refused, DNS errors etc.)\nconst statusCode = pingResult?.$error?.statusCode || $input.all()[0]?.statusCode || 500;\nconst errorMessage = pingResult?.$error?.message || \"\";\n\nreturn [{\n  json: {\n    statusCode: statusCode,\n    isHealthy: statusCode === 200,\n    responseTime: responseTime,\n    timestamp: new Date().toISOString(),\n    errorMessage: errorMessage,\n    appUrl: $env.APP_URL || \"https://demo.realworld.show\"\n  }\n}];"
+      },
+      "id": "3a59fe00-88f1-4577-8e03-ea5fefe3b9c2",
+      "name": "Extract Status Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        560,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "status-check",
+              "leftValue": "={{ $json.isHealthy }}",
+              "rightValue": "",
+              "operator": "isTrue"
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "0559b76b-280a-44d5-804e-cb79a927acc9",
+      "name": "IF: Status 200?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        760,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    status: \"UP\",\n    statusCode: $json.statusCode,\n    responseTime: $json.responseTime,\n    timestamp: $json.timestamp,\n    message: \"App is responding normally\",\n    appUrl: $json.appUrl\n  }\n}];"
+      },
+      "id": "9eb42d55-f2ab-46b1-82c2-30d0e5ccacc2",
+      "name": "Log Healthy Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://sheets.googleapis.com/v4/spreadsheets/{{ $env.SHEET_ID }}/values/Uptime!A:H/append",
+        "authentication": "oAuth2",
+        "nodeCredentialType": "googleSheetsOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"values\": [[\"{{ $json.timestamp }}\", \"{{ $json.status }}\", \"{{ $json.statusCode }}\", \"{{ $json.responseTime }}ms\", \"OK\", \"-\", \"0\", \"\"]]\n}"
+      },
+      "id": "6d347212-2d1a-4144-8f47-bfaabbf918bd",
+      "name": "Sheet: Log Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1160,
+        100
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    status: \"DOWN\",\n    statusCode: $json.statusCode,\n    responseTime: $json.responseTime,\n    timestamp: $json.timestamp,\n    message: $json.errorMessage || (\"App returned status \" + $json.statusCode),\n    appUrl: $json.appUrl\n  }\n}];"
+      },
+      "id": "53431f4e-b01b-42fd-8d2a-5f88557a829b",
+      "name": "Log Alert Status",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        960,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.DISCORD_WEBHOOK_URL }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"content\": \"\ud83d\udea8 **ALERT: Web App Downtime Detected**\\n\\n**URL:** \" + $json.appUrl + \"\\n**Status Code:** \" + $json.statusCode + \"\\n**Timestamp:** \" + $json.timestamp + \"\\n**Message:** \" + $json.message + \"\\n\\nImmediate action required!\"\n}"
+      },
+      "id": "6e300e12-5d98-4582-a126-5466ff47e5c6",
+      "name": "Discord Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1160,
+        300
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://sheets.googleapis.com/v4/spreadsheets/{{ $env.SHEET_ID }}/values/Uptime!A:H/append",
+        "authentication": "oAuth2",
+        "nodeCredentialType": "googleSheetsOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"values\": [[\"{{ $json.timestamp }}\", \"{{ $json.status }}\", \"{{ $json.statusCode }}\", \"{{ $json.responseTime }}ms\", \"FAILED\", \"API Error\", \"1\", \"{{ $json.message }}\"]]\n}"
+      },
+      "id": "0163bab5-5747-4a12-826a-0a816de78f53",
+      "name": "Sheet: Log Alert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1360,
+        300
+      ],
+      "continueOnFail": true
+    }
+  ],
+  "connections": {
+    "Schedule - Every 5 Minutes": {
+      "main": [
+        [
+          {
+            "node": "Set Start Time",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Set Start Time": {
+      "main": [
+        [
+          {
+            "node": "Ping Web App",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ping Web App": {
+      "main": [
+        [
+          {
+            "node": "Extract Status Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Status Data": {
+      "main": [
+        [
+          {
+            "node": "IF: Status 200?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF: Status 200?": {
+      "main": [
+        [
+          {
+            "node": "Log Healthy Status",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Alert Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Healthy Status": {
+      "main": [
+        [
+          {
+            "node": "Sheet: Log Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Alert Status": {
+      "main": [
+        [
+          {
+            "node": "Discord Alert",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Sheet: Log Alert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "17eb5dc2-3197-4f63-a249-7febfaec4744",
+  "id": "2",
+  "meta": {
+    "instanceId": "cbcd5035e46bfb46c646dbfa993e390c50dfcb7428811440621427926b645b23"
+  },
+  "tags": []
+}

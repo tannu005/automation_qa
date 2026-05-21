@@ -1,0 +1,319 @@
+{
+  "name": "GitHub Trending Repos Digest",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "hours",
+              "hoursInterval": 1
+            }
+          ]
+        }
+      },
+      "id": "2c91ed0a-f685-43ae-afa5-c1420b794494",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        0,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://api.github.com/search/repositories",
+        "authentication": "genericCredentialType",
+        "genericAuth": "github_token",
+        "sendQueryParameters": true,
+        "specifyQueryParameters": "keyValues",
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "language:javascript"
+            },
+            {
+              "name": "sort",
+              "value": "stars"
+            },
+            {
+              "name": "order",
+              "value": "desc"
+            },
+            {
+              "name": "per_page",
+              "value": "10"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "07950056-4389-4f5d-bcae-23cafabc9048",
+      "name": "Fetch GitHub Trending",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        200,
+        200
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// Check if input contains error or no items\nconst items = $input.all();\nif (items.length === 0 || !items[0].json || items[0].json.$error || !items[0].json.items) {\n  return [{\n    json: {\n      error: true,\n      message: items[0]?.json?.$error?.message || \"Failed to fetch trending repositories from GitHub.\"\n    }\n  }];\n}\n\n// Process repositories (top 5)\nconst repos = items[0].json.items.slice(0, 5).map(repo => ({\n  name: repo.name,\n  url: repo.html_url,\n  stars: repo.stargazers_count,\n  description: repo.description || \"No description provided.\",\n  language: repo.language,\n  owner: repo.owner.login\n}));\n\nreturn [{\n  json: {\n    error: false,\n    repos: repos\n  }\n}];"
+      },
+      "id": "18956e9f-74b9-4c00-8e72-a13c63de533b",
+      "name": "Check & Transform",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        400,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "err-check",
+              "leftValue": "={{ $json.error }}",
+              "rightValue": "",
+              "operator": "isTrue"
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "eb609c61-15fb-44e2-b026-a49303281c12",
+      "name": "IF: Has Error?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        600,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.DISCORD_WEBHOOK_URL }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"content\": \"\u26a0\ufe0f **GitHub API Digest Failed**\\n\\nError: \" + $json.message + \"\\n\\nPlease check the workflow logs.\"\n}"
+      },
+      "id": "10c3fd11-274e-4c03-8e68-e260da5ec0e7",
+      "name": "Discord Error Notification",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        800,
+        350
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "pop-check",
+              "leftValue": "={{ $json.repos[0].stars }}",
+              "rightValue": "1000",
+              "operator": "gt"
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "id": "05270fc1-d565-4112-9226-dedd4c788564",
+      "name": "IF: High Popularity",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        800,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://api.github.com/repos/{{ $json.repos[0].owner }}/{{ $json.repos[0].name }}/readme",
+        "authentication": "genericCredentialType",
+        "genericAuth": "github_token",
+        "options": {}
+      },
+      "id": "c8acbe6d-79b5-4952-a731-d4cada6359a9",
+      "name": "Fetch Top Repo README",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1000,
+        0
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const readmeResult = $input.all()[0]?.json;\nlet preview = \"README not available or could not be fetched.\";\n\nif (readmeResult && readmeResult.content) {\n  try {\n    const decoded = Buffer.from(readmeResult.content, 'base64').toString('utf-8');\n    preview = decoded.substring(0, 500) + \"...\";\n  } catch (e) {\n    preview = \"Error decoding README content.\";\n  }\n} else if (readmeResult && readmeResult.$error) {\n  preview = \"Skipped README: \" + readmeResult.$error.message;\n}\n\nconst topRepo = $node[\"Check & Transform\"].json.repos[0];\nconst allRepos = $node[\"Check & Transform\"].json.repos;\n\nreturn [{\n  json: {\n    topRepo,\n    allRepos,\n    readmePreview: preview,\n    timestamp: new Date().toISOString()\n  }\n}];"
+      },
+      "id": "4cef7129-6673-4444-bad1-520695ac331b",
+      "name": "Enrich with README",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.DISCORD_WEBHOOK_URL }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"content\": \"\ud83d\udcca **GitHub Trending JavaScript Repos (Hourly Digest)**\\n\\n**Top Repo:** [\" + $json.topRepo.name + \"](\" + $json.topRepo.url + \")\\n\u2b50 **Stars:** \" + $json.topRepo.stars + \"\\n\ud83d\udc64 **Owner:** \" + $json.topRepo.owner + \"\\n\ud83d\udcdd **Description:** \" + $json.topRepo.description + \"\\n\\n**README Preview:**\\n\\`\\`\\`\\n\" + $json.readmePreview + \"\\n\\`\\`\\`\"\n}"
+      },
+      "id": "c132e564-168b-4c2b-9d9d-db3d154cee8d",
+      "name": "Discord Webhook",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1400,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.DISCORD_WEBHOOK_URL }}",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"content\": \"\ud83d\udcc8 **Lower Popularity Repos Found**\\n\\nTop repo \" + $json.repos[0].name + \" has only \" + $json.repos[0].stars + \" stars. Digest skipped enrichment.\"\n}"
+      },
+      "id": "e266e67e-8ff0-4ff9-8a2e-dec2382b39d8",
+      "name": "Low Popularity Notification",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [
+        1000,
+        200
+      ]
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Fetch GitHub Trending",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch GitHub Trending": {
+      "main": [
+        [
+          {
+            "node": "Check & Transform",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check & Transform": {
+      "main": [
+        [
+          {
+            "node": "IF: Has Error?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF: Has Error?": {
+      "main": [
+        [
+          {
+            "node": "Discord Error Notification",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "IF: High Popularity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF: High Popularity": {
+      "main": [
+        [
+          {
+            "node": "Fetch Top Repo README",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Low Popularity Notification",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Top Repo README": {
+      "main": [
+        [
+          {
+            "node": "Enrich with README",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enrich with README": {
+      "main": [
+        [
+          {
+            "node": "Discord Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "f63909d0-1bc7-4b45-8245-059405d2a418",
+  "id": "1",
+  "meta": {
+    "instanceId": "cbcd5035e46bfb46c646dbfa993e390c50dfcb7428811440621427926b645b23"
+  },
+  "tags": []
+}
