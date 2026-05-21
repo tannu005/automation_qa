@@ -5,14 +5,9 @@
 **Time Spent:** ~2 Hours  
 **Submission Date:** May 21, 2026
 
----
+## 🎥 Live Application Walkthrough (Local Demo)
 
-## 🎥 Loom Demonstration Video
-
-> [!IMPORTANT]
-> **Walkthrough Video Link:** **[PASTE YOUR LOOM VIDEO LINK HERE]**
->
-> *(To complete your submission, record a quick 60-90 second walkthrough of this repo and the running local app using the provided script, and paste your Loom URL right here!)*
+![Local Conduit App Demo](realworld-demo/demo.gif)
 
 ---
 
