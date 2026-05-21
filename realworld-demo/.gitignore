@@ -1,0 +1,27 @@
+# Dependencies
+node_modules/
+.npm
+
+# Build output
+dist/
+dist-ssr/
+build/
+
+# Vite cache
+.vite/
+*.local
+
+# Cypress
+cypress/videos/
+cypress/screenshots/
+
+# Editor
+.DS_Store
+*.suo
+*.user
+.idea/
+.vscode/
+
+# Logs
+*.log
+npm-debug.log*
